@@ -9,6 +9,7 @@ Usage:
 """
 
 from .db import create_pool
+from .config import Config, MySQLConfig, LLMConfig
 from .tags import Tag, TagManager
 from .events import Event, EventManager
 from .generator import (
@@ -22,37 +23,55 @@ from .retriever import Retriever, RetrieveResult
 
 
 class TagMemory:
-    """High-level API for the tag-based memory system."""
+    """High-level API for the tag-based memory system.
+
+    Connection and LLM config are read automatically from:
+      1. Explicit constructor arguments (highest priority)
+      2. TAG_MEMORY_* environment variables
+      3. .env file in project root or cwd
+      4. Defaults
+
+    Minimal usage (all auto-detected):
+        mem = TagMemory()
+
+    With explicit overrides:
+        mem = TagMemory(mysql_host="192.168.1.100", llm_model="gpt-4o")
+    """
 
     def __init__(
         self,
         *,
-        mysql_host: str = "localhost",
-        mysql_port: int = 3306,
-        mysql_user: str = "root",
+        # MySQL (all optional — read from TAG_MEMORY_MYSQL_* env / .env)
+        mysql_host: str = "",
+        mysql_port: int = 0,
+        mysql_user: str = "",
         mysql_password: str = "",
-        mysql_database: str = "tag_memory",
+        mysql_database: str = "",
         namespace: str = "default",
+        # LLM (all optional — read from TAG_MEMORY_LLM_* env / .env)
         llm: "LLMClient | None" = None,
         llm_api_key: str | None = None,
-        llm_base_url: str = "https://api.openai.com/v1",
-        llm_model: str = "gpt-4o-mini",
+        llm_base_url: str = "",
+        llm_model: str = "",
     ):
+        mysql_cfg = MySQLConfig.from_env()
+        llm_cfg = LLMConfig.from_env()
+
         self.conn = create_pool(
-            host=mysql_host,
-            port=mysql_port,
-            user=mysql_user,
-            password=mysql_password,
-            database=mysql_database,
+            host=mysql_host or mysql_cfg.host,
+            port=mysql_port or mysql_cfg.port,
+            user=mysql_user or mysql_cfg.user,
+            password=mysql_password if mysql_password else mysql_cfg.password,
+            database=mysql_database or mysql_cfg.database,
         )
         self.tags = TagManager(self.conn, namespace)
         self.events = EventManager(self.conn, namespace)
 
         if llm is None:
             llm = OpenAIClient(
-                api_key=llm_api_key,
-                base_url=llm_base_url,
-                model=llm_model,
+                api_key=llm_api_key or llm_cfg.api_key,
+                base_url=llm_base_url or llm_cfg.base_url,
+                model=llm_model or llm_cfg.model,
             )
         self.generator = TagGenerator(llm)
         self.retriever = Retriever(
@@ -109,6 +128,9 @@ class TagMemory:
 
 __all__ = [
     "TagMemory",
+    "Config",
+    "MySQLConfig",
+    "LLMConfig",
     "TagManager",
     "EventManager",
     "TagGenerator",

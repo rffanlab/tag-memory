@@ -1,36 +1,33 @@
 """
 Demo — Tag-based Memory System full pipeline.
 
-Run:
-  uv run python examples/demo.py
+Run (auto-config from .env or TAG_MEMORY_* env vars):
+  cd tag-memory && uv run python examples/demo.py
+
+Or with explicit config:
+  TAG_MEMORY_MYSQL_PASSWORD=secret uv run python examples/demo.py
 """
 
 import asyncio
-import os
 
-from dotenv import load_dotenv
-load_dotenv()
-
-from tag_memory import TagMemory, OpenAIClient
+from tag_memory import TagMemory, Config
 
 
 async def main():
-    # 1. Connect
-    mem = TagMemory(
-        mysql_user="root",
-        mysql_password=os.getenv("MYSQL_PASSWORD", ""),
-        mysql_database="tag_memory",
-        namespace="demo",
-        llm=OpenAIClient(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        ),
-    )
+    # ── Mode 1: Zero-config (reads .env + TAG_MEMORY_* env vars) ──
+    print("=" * 50)
+    print("Mode 1 — 零配置，自动读取 .env / TAG_MEMORY_* 环境变量")
+    print("=" * 50)
+
+    cfg = Config.from_env()
+    print(f"  MySQL → {cfg.mysql.user}@{cfg.mysql.host}:{cfg.mysql.port}/{cfg.mysql.database}")
+    print(f"  LLM   → {cfg.llm.model} @ {cfg.llm.base_url}")
+
+    mem = TagMemory(namespace="demo")
 
     try:
-        # 2. Store some memories
-        print("📝 存储记忆...")
+        # Store some memories
+        print("\n📝 存储记忆...")
 
         await mem.remember(
             "张三在会议室向李四汇报了Q3项目进展：已完成80%，但需要延期两周。"
@@ -62,7 +59,7 @@ async def main():
 
         print("   ✅ 4 条记忆已存储")
 
-        # 3. Query
+        # Query
         print("\n🔍 检索: '张三的Q3进展怎么样了？'")
         result = await mem.recall("张三的Q3进展怎么样了？")
         print(f"   标签: {result.search_tags}")
@@ -85,13 +82,28 @@ async def main():
         text = await mem.recall_text("张三最近在忙什么")
         print(text[:500])
 
-        # 4. Show tag tree
+        # Show tag tree
         print("\n🏷️  标签树:")
         tree = mem.tags.get_tree()
         _print_tree(tree)
 
     finally:
         mem.close()
+
+    # ── Mode 2: Explicit override ──
+    print("\n" + "=" * 50)
+    print("Mode 2 — 显式覆盖（最高优先级，忽略 env/.env）")
+    print("=" * 50)
+
+    # If you need to override, pass keyword args (they win over env/.env)
+    # mem2 = TagMemory(
+    #     mysql_host="192.168.1.100",
+    #     mysql_password="prod-secret",
+    #     llm_model="gpt-4o",
+    #     namespace="production",
+    # )
+    print("   mem = TagMemory(mysql_host='...', llm_model='gpt-4o')")
+    print("   显式参数优先级最高，覆盖 .env 和系统环境变量")
 
 
 def _print_tree(tags, indent=0):

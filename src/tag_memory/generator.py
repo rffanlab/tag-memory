@@ -11,11 +11,12 @@ Uses structured JSON output from the LLM for reliable parsing.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 import httpx
+
+from .config import LLMConfig
 
 if TYPE_CHECKING:
     from .tags import TagManager
@@ -49,17 +50,22 @@ class LLMClient(Protocol):
 # ── OpenAI-compatible client ──────────────────────────────
 
 class OpenAIClient:
-    """Minimal OpenAI-compatible client. Works with DeepSeek, OpenAI, etc."""
+    """Minimal OpenAI-compatible client. Works with DeepSeek, OpenAI, etc.
+
+    Credentials are read from TAG_MEMORY_LLM_* env vars / .env file.
+    Pass explicit values to override.
+    """
 
     def __init__(
         self,
         api_key: str | None = None,
-        base_url: str = "https://api.openai.com/v1",
-        model: str = "gpt-4o-mini",
+        base_url: str = "",
+        model: str = "",
     ):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or ""
-        self.base_url = base_url.rstrip("/")
-        self.model = model
+        config = LLMConfig.from_env()
+        self.api_key = api_key or config.api_key
+        self.base_url = (base_url or config.base_url).rstrip("/")
+        self.model = model or config.model
 
     async def chat(self, system: str, user: str) -> str:
         async with httpx.AsyncClient(timeout=60) as client:
